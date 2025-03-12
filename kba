@@ -126,7 +126,7 @@ run_music_animation() {
 			brightness=0;
 		fi
 
-		brightnessctl -q --device="smc::kbd_backlight" set $brightness
+		brightnessctl -q --class=$class --device=$device set $brightness
 	done
 }
 
