@@ -1,0 +1,147 @@
+#! /usr/bin/env bash
+
+brightness=0
+class="leds"
+device=""
+mode=""
+
+print_help() {
+	echo "kba - Animations for your keyboard backlight."
+	echo ""
+	echo 'Usage: ./backlight_animation [options] --device DEVICE --mode MODE'
+	echo ""
+	echo "Options:"
+	echo "	-h, --help		print help"
+	echo "	-c, --class CLASS	specify device class (default: leds)"
+	echo "	-d, --device DEVICE	specify device name"
+	echo "	-m, --mode MODE		specify mode for animation (available: fading, music)"
+}
+
+check_device_exists() {
+	if [ ! -d "/sys/class/$class/$device" ]; then
+		echo "device \"$device\" doesn't exist"
+		exit;
+	fi
+}
+
+check_mode_exists() {
+	if [[ $mode != "fading" ]] && [[ $mode != "music" ]]; then
+		echo "mode \"$mode\" doesn't exist"
+		exit;
+	fi
+}
+
+check_required_arg() {
+	if [[ ! $device ]]; then
+		echo "need device name";
+		exit;
+	else
+		check_device_exists;
+	fi
+
+	if [[ ! $mode ]]; then
+		echo "need mode name";
+		exit;
+	else
+		check_mode_exists;
+	fi
+}
+
+process_args() {
+	if [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $# -eq 0 ]]; then
+		print_help;
+		exit;
+	fi
+
+	while [[ $# -gt 0 ]]; do
+		case $1 in 
+			-d|--device)
+				if [[ $2 ]]; then
+					device=$2;
+					shift;
+					shift;
+				else
+					echo "need device name";
+					exit;
+				fi
+				;;
+			-c|--class)
+				if [[ $2 ]]; then
+					class=$2;
+					shift;
+					shift;
+				else
+					echo "need class name";
+					exit;
+				fi
+				;;
+			-m|--mode)
+				if [[ $2 ]]; then
+					mode=$2;
+					shift;
+					shift;
+				else
+					echo "need mode name"
+					exit;
+				fi
+				;;
+		esac
+	done
+
+	check_required_arg
+}
+
+run_fading() {
+	fading_action="grow"
+	while true;
+	do
+		if [ $brightness == 255 ]; then
+			fading_action="decrease";
+		elif [ $brightness == 15 ]; then
+			fading_action="grow";
+		fi
+
+		if [ $fading_action == "grow" ]; then
+			brightness=$((brightness + 5));
+		elif [ $fading_action == "decrease" ]; then
+			brightness=$((brightness - 5));
+		fi
+
+		brightnessctl -q --device=$device set $brightness
+		sleep 0.025
+	done
+}
+
+run_music_animation() {
+	while true;
+	do
+		arecord -V mono -r 44100 -f S32_LE -F 10 -s 1 -c 2 -q /dev/null 0&> /tmp/peak
+
+		output=$(grep -Eo '([0-9]*)%' /tmp/peak | tail -n 1)
+		output=$(echo "$output" | sed -e 's/^0+(?=[0-9])//' -e "s/%//")
+
+		if [[ $output ]]; then
+			brightness=$(((255 / 100)*($output * 10)));
+		else
+			brightness=0;
+		fi
+
+		brightnessctl -q --device="smc::kbd_backlight" set $brightness
+	done
+}
+
+
+run_animation() {
+	if [ $mode == "fading" ]; then
+		run_fading;
+	elif [ $mode == "music" ]; then
+		run_music_animation;
+	fi
+}
+
+main() {
+	process_args "$@"
+	run_animation
+}
+
+main "$@"
